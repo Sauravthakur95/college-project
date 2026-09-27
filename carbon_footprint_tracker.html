@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoPulse - Carbon Footprint Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                        },
+                        eco: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            accent: '#10b981',
+                            warning: '#f59e0b',
+                            danger: '#ef4444'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #059669;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10b981;
+        }
+
+        /* SVG Circle Ring Animation */
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.5s ease-in-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-900 text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white"
+      x-data="app()" x-init="initApp()">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Top Header Navigation -->
+        <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <!-- Logo & Name -->
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
+                        <i data-lucide="leaf" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <span class="text-xl font-bold bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">EcoPulse</span>
+                        <span class="hidden sm:inline-block text-xs text-slate-400 ml-2 border-l border-slate-700 pl-2">Carbon Intelligence</span>
+                    </div>
+                </div>
+
+                <!-- Right Navigation Controls -->
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <!-- Unit Toggle -->
+                    <div class="bg-slate-800 p-1 rounded-lg flex border border-slate-700 text-xs">
+                        <button @click="unit = 'kg'; recalculate()" 
+                                :class="unit === 'kg' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'"
+                                class="px-2.5 py-1 rounded-md transition-colors">
+                            kg CO₂
+                        </button>
+                        <button @click="unit = 'ton'; recalculate()" 
+                                :class="unit === 'ton' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'"
+                                class="px-2.5 py-1 rounded-md transition-colors">
+                            Tons CO₂
+                        </button>
+                    </div>
+
+                    <!-- Period Switcher -->
+                    <div class="bg-slate-800 p-1 rounded-lg flex border border-slate-700 text-xs">
+                        <button @click="period = 'monthly'; recalculate()" 
+                                :class="period === 'monthly' ? 'bg-slate-700 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-white'"
+                                class="px-2.5 py-1 rounded-md transition-colors">
+                            Monthly
+                        </button>
+                        <button @click="period = 'annual'; recalculate()" 
+                                :class="period === 'annual' ? 'bg-slate-700 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-white'"
+                                class="px-2.5 py-1 rounded-md transition-colors">
+                            Annual
+                        </button>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <button @click="openExportModal = true" class="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors" title="Import/Export Data">
+                        <i data-lucide="arrow-up-down" class="w-5 h-5"></i>
+                    </button>
+                    <button @click="openResetModal = true" class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors" title="Reset All Data">
+                        <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            
+            <!-- Navigation Tabs -->
+            <div class="flex space-x-1 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/60 overflow-x-auto scrollbar-none">
+                <button @click="activeTab = 'tracker'" 
+                        :class="activeTab === 'tracker' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'"
+                        class="flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                    <i data-lucide="gauge" class="w-4 h-4"></i>
+                    <span>Dashboard & Tracker</span>
+                </button>
+                <button @click="activeTab = 'analytics'" 
+                        :class="activeTab === 'analytics' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'"
+                        class="flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                    <span>Analytics & History</span>
+                </button>
+                <button @click="activeTab = 'benchmarks'" 
+                        :class="activeTab === 'benchmarks' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'"
+                        class="flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                    <i data-lucide="globe" class="w-4 h-4"></i>
+                    <span>Global Benchmarks</span>
+                </button>
+                <button @click="activeTab = 'challenges'" 
+                        :class="activeTab === 'challenges' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'"
+                        class="flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                    <i data-lucide="trophy" class="w-4 h-4"></i>
+                    <span>Eco Challenges</span>
+                    <span x-show="completedChallengesCount > 0" class="ml-1 px-1.5 py-0.5 text-xs bg-emerald-400 text-slate-900 font-bold rounded-full" x-text="completedChallengesCount"></span>
+                </button>
+                <button @click="activeTab = 'tips'" 
+                        :class="activeTab === 'tips' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'"
+                        class="flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                    <i data-lucide="lightbulb" class="w-4 h-4"></i>
+                    <span>Smart Tips</span>
+                </button>
+            </div>
+
+            <!-- TAB 1: TRACKER & CALCULATOR DASHBOARD -->
+            <div x-show="activeTab === 'tracker'" class="space-y-6">
+                <!-- Top Summary Banner -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Gauge Ring Card -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 flex flex-col items-center justify-center relative overflow-hidden group">
+                        <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+                        <h3 class="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">Total Carbon Footprint</h3>
+                        
+                        <!-- Circular Progress Gauge -->
+                        <div class="relative w-44 h-44 flex items-center justify-center my-2">
+                            <svg class="w-full h-full" viewBox="0 0 120 120">
+                                <!-- Background Circle -->
+                                <circle class="text-slate-700/50" stroke-width="10" stroke="currentColor" fill="transparent" r="48" cx="60" cy="60"/>
+                                <!-- Animated Ring -->
+                                <circle class="progress-ring__circle" 
+                                        :class="getFootprintColorClass()"
+                                        stroke-width="10" 
+                                        :stroke-dasharray="301.59" 
+                                        :stroke-dashoffset="301.59 - (Math.min(totalCO2Val / targetThreshold, 1.5) * 301.59)" 
+                                        stroke-linecap="round" 
+                                        stroke="currentColor" 
+                                        fill="transparent" 
+                                        r="48" cx="60" cy="60"/>
+                            </svg>
+                            <div class="absolute flex flex-col items-center text-center">
+                                <span class="text-3xl font-extrabold tracking-tight text-white" x-text="formattedTotalCO2"></span>
+                                <span class="text-xs font-medium text-emerald-400 mt-0.5" x-text="unit === 'kg' ? 'kg CO₂e' : 'Metric Tons CO₂e'"></span>
+                                <span class="text-[10px] text-slate-400 mt-1" x-text="period === 'monthly' ? '/ month' : '/ year'"></span>
+                            </div>
+                        </div>
+
+                        <!-- Target Comparison Indicator -->
+                        <div class="w-full mt-2 pt-3 border-t border-slate-700/60 flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Target (1.5°C Paris):</span>
+                            <span class="font-semibold" :class="totalCO2Val <= targetThreshold ? 'text-emerald-400' : 'text-amber-400'" 
+                                  x-text="formattedTarget + ' ' + (unit === 'kg' ? 'kg' : 'Tons')"></span>
+                        </div>
+                    </div>
+
+                    <!-- Category Breakdown Doughnut Chart -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-slate-200">Emissions Breakdown</h3>
+                            <span class="text-xs text-slate-400">By Category</span>
+                        </div>
+                        <div class="relative flex-1 flex items-center justify-center min-h-[180px]">
+                            <canvas id="categoryDonutChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Environmental Impact Equivalent -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 flex flex-col justify-between">
+                        <h3 class="text-sm font-semibold text-slate-200 mb-4">Equivalency Impact</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center space-x-4 bg-slate-900/50 p-3 rounded-xl border border-slate-700/40">
+                                <div class="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                                    <i data-lucide="trees" class="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <div class="text-lg font-bold text-white" x-text="treesNeeded"></div>
+                                    <div class="text-xs text-slate-400">Trees required for 1 year to offset</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center space-x-4 bg-slate-900/50 p-3 rounded-xl border border-slate-700/40">
+                                <div class="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg">
+                                    <i data-lucide="plane-takeoff" class="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <div class="text-lg font-bold text-white" x-text="flightEquiv"></div>
+                                    <div class="text-xs text-slate-400">Equivalent NYC to London flights</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center space-x-4 bg-slate-900/50 p-3 rounded-xl border border-slate-700/40">
+                                <div class="p-2.5 bg-purple-500/10 text-purple-400 rounded-lg">
+                                    <i data-lucide="car" class="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <div class="text-lg font-bold text-white" x-text="kmDrivenEquiv"></div>
+                                    <div class="text-xs text-slate-400">km driven in average gas vehicle</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Category Inputs Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- 1. Transportation -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center space-x-3 pb-3 border-b border-slate-700">
+                            <div class="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                                <i data-lucide="car" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-100">Transportation</h4>
+                                <p class="text-xs text-slate-400">Vehicles, public transit, and flights</p>
+                            </div>
+                            <span class="ml-auto font-bold text-blue-400 text-sm" x-text="getCategoryTotal('transport') + ' ' + (unit==='kg'?'kg':'T')"></span>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Car Distance (Gasoline)</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.carKm + ' km/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="3000" step="50" x-model.number="inputs.carKm" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Electric Vehicle (EV) Travel</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.evKm + ' km/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="3000" step="50" x-model.number="inputs.evKm" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Public Transit (Bus/Train)</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.transitKm + ' km/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="2000" step="25" x-model.number="inputs.transitKm" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Flights (Short & Long Haul)</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.flightHours + ' hrs/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="100" step="1" x-model.number="inputs.flightHours" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Home Energy -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center space-x-3 pb-3 border-b border-slate-700">
+                            <div class="p-2 bg-amber-500/10 text-amber-400 rounded-xl">
+                                <i data-lucide="zap" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-100">Home & Energy</h4>
+                                <p class="text-xs text-slate-400">Electricity, heating fuel, and green tariffs</p>
+                            </div>
+                            <span class="ml-auto font-bold text-amber-400 text-sm" x-text="getCategoryTotal('energy') + ' ' + (unit==='kg'?'kg':'T')"></span>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Electricity Usage</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.electricityKwh + ' kWh/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="1500" step="25" x-model.number="inputs.electricityKwh" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Natural Gas Consumption</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.naturalGasm3 + ' m³/' + (period==='monthly'?'mo':'yr')"></span>
+                                </label>
+                                <input type="range" min="0" max="500" step="10" x-model.number="inputs.naturalGasm3" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2">
+                                <span class="text-slate-300 font-medium">100% Renewable Tariff</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" x-model="inputs.greenTariff" @change="recalculate()" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Diet & Food -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center space-x-3 pb-3 border-b border-slate-700">
+                            <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                                <i data-lucide="utensils" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-100">Diet & Food</h4>
+                                <p class="text-xs text-slate-400">Dietary habits and meat consumption</p>
+                            </div>
+                            <span class="ml-auto font-bold text-emerald-400 text-sm" x-text="getCategoryTotal('food') + ' ' + (unit==='kg'?'kg':'T')"></span>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label class="block text-slate-300 mb-1">Diet Style</label>
+                                <select x-model="inputs.dietType" @change="recalculate()" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-emerald-500">
+                                    <option value="heavyMeat">Meat Lover (Meat daily)</option>
+                                    <option value="mediumMeat">Average Meat Eater (3-4 times/wk)</option>
+                                    <option value="lowMeat">Low Meat / Pescatarian</option>
+                                    <option value="vegetarian">Vegetarian</option>
+                                    <option value="vegan">Vegan / Strict Plant-based</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Food Waste Percentage</span>
+                                    <span class="font-mono text-slate-400" x-text="inputs.foodWaste + '%'"></span>
+                                </label>
+                                <input type="range" min="0" max="50" step="5" x-model.number="inputs.foodWaste" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Shopping & Lifestyle -->
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center space-x-3 pb-3 border-b border-slate-700">
+                            <div class="p-2 bg-purple-500/10 text-purple-400 rounded-xl">
+                                <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-100">Shopping & Lifestyle</h4>
+                                <p class="text-xs text-slate-400">Goods, recycling habits, and consumption</p>
+                            </div>
+                            <span class="ml-auto font-bold text-purple-400 text-sm" x-text="getCategoryTotal('goods') + ' ' + (unit==='kg'?'kg':'T')"></span>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label class="flex justify-between text-slate-300 mb-1">
+                                    <span>Monthly Goods & Clothing Spend ($)</span>
+                                    <span class="font-mono text-slate-400" x-text="'$' + inputs.goodsSpend"></span>
+                                </label>
+                                <input type="range" min="0" max="2000" step="50" x-model.number="inputs.goodsSpend" @input="recalculate()" class="w-full accent-emerald-500 bg-slate-700 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="block text-slate-300 mb-1">Recycling Level</label>
+                                <select x-model="inputs.recycling" @change="recalculate()" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-emerald-500">
+                                    <option value="none">Minimal / No Recycling</option>
+                                    <option value="average">Basic (Paper & Plastic)</option>
+                                    <option value="high">High (Compost, Zero Waste focus)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Save Record Button -->
+                <div class="flex justify-end">
+                    <button @click="saveLogEntry()" class="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-6 py-3 rounded-xl shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        <span>Save Current Snapshot to History</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 2: ANALYTICS & HISTORICAL TRENDS -->
+            <div x-show="activeTab === 'analytics'" class="space-y-6" x-cloak>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Footprint History & Progress</h3>
+                            <p class="text-xs text-slate-400">Track your carbon reduction trajectory over time</p>
+                        </div>
+                        <span class="text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700" x-text="logs.length + ' Saved Snapshots'"></span>
+                    </div>
+
+                    <!-- Line Chart -->
+                    <div class="h-72 w-full">
+                        <canvas id="historicalTrendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- History Log Table -->
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-700">
+                        <h4 class="font-bold text-slate-200 text-sm">Snapshot Log History</h4>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-300">
+                            <thead class="bg-slate-900/60 text-slate-400 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-3">Date</th>
+                                    <th class="px-6 py-3">Transport</th>
+                                    <th class="px-6 py-3">Energy</th>
+                                    <th class="px-6 py-3">Diet</th>
+                                    <th class="px-6 py-3">Shopping</th>
+                                    <th class="px-6 py-3">Total CO₂e</th>
+                                    <th class="px-6 py-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700/50">
+                                <template x-for="(log, idx) in logs" :key="idx">
+                                    <tr class="hover:bg-slate-700/30 transition-colors">
+                                        <td class="px-6 py-3 font-medium text-slate-200" x-text="log.date"></td>
+                                        <td class="px-6 py-3" x-text="log.transport + ' ' + unit"></td>
+                                        <td class="px-6 py-3" x-text="log.energy + ' ' + unit"></td>
+                                        <td class="px-6 py-3" x-text="log.food + ' ' + unit"></td>
+                                        <td class="px-6 py-3" x-text="log.goods + ' ' + unit"></td>
+                                        <td class="px-6 py-3 font-bold text-emerald-400" x-text="log.total + ' ' + unit"></td>
+                                        <td class="px-6 py-3 text-right">
+                                            <button @click="deleteLog(idx)" class="text-rose-400 hover:text-rose-300 p-1">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-if="logs.length === 0">
+                                    <tr>
+                                        <td colspan="7" class="px-6 py-8 text-center text-slate-500 italic">
+                                            No saved snapshots yet. Click "Save Current Snapshot to History" on the dashboard tab.
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: GLOBAL BENCHMARKS -->
+            <div x-show="activeTab === 'benchmarks'" class="space-y-6" x-cloak>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 space-y-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Global & Regional Benchmarks</h3>
+                        <p class="text-xs text-slate-400">See how your annual carbon footprint compares to global averages and target limits</p>
+                    </div>
+
+                    <!-- Benchmark Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <!-- User's Footprint -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-emerald-500/40 relative">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Your Current Annual</span>
+                            <div class="text-2xl font-black text-white mt-1" x-text="annualTotalFormatted + ' T'"></div>
+                            <p class="text-xs text-slate-400 mt-1">Based on current inputs</p>
+                        </div>
+
+                        <!-- 1.5 Target -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-teal-400">1.5°C Paris Accord Target</span>
+                            <div class="text-2xl font-black text-white mt-1">2.0 T</div>
+                            <p class="text-xs text-slate-400 mt-1">Sustainable global average target</p>
+                        </div>
+
+                        <!-- World Average -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400">Global Average</span>
+                            <div class="text-2xl font-black text-white mt-1">4.7 T</div>
+                            <p class="text-xs text-slate-400 mt-1">Current worldwide average per capita</p>
+                        </div>
+
+                        <!-- USA Average -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-rose-400">US National Average</span>
+                            <div class="text-2xl font-black text-white mt-1">14.5 T</div>
+                            <p class="text-xs text-slate-400 mt-1">High consumption benchmark</p>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Progress Bars -->
+                    <div class="space-y-4 pt-4 border-t border-slate-700">
+                        <h4 class="font-semibold text-slate-200 text-sm">Visual Benchmark Relative Comparison</h4>
+                        
+                        <!-- User Bar -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-medium">
+                                <span class="text-emerald-400">Your Footprint</span>
+                                <span x-text="annualTotalNum + ' Tons CO₂e/yr'"></span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden">
+                                <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" :style="`width: ${Math.min((annualTotalNum / 16) * 100, 100)}%`"></div>
+                            </div>
+                        </div>
+
+                        <!-- Paris Accord Target -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-medium">
+                                <span class="text-teal-400">1.5°C Climate Target Target</span>
+                                <span>2.0 Tons CO₂e/yr</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden">
+                                <div class="bg-teal-500 h-full rounded-full transition-all duration-500" style="width: 12.5%"></div>
+                            </div>
+                        </div>
+
+                        <!-- World Avg -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-medium">
+                                <span class="text-amber-400">Global Average</span>
+                                <span>4.7 Tons CO₂e/yr</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden">
+                                <div class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 29.3%"></div>
+                            </div>
+                        </div>
+
+                        <!-- USA Avg -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-medium">
+                                <span class="text-rose-400">US Average</span>
+                                <span>14.5 Tons CO₂e/yr</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden">
+                                <div class="bg-rose-500 h-full rounded-full transition-all duration-500" style="width: 90.6%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: ECO CHALLENGES -->
+            <div x-show="activeTab === 'challenges'" class="space-y-6" x-cloak>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Active Reduction Challenges</h3>
+                            <p class="text-xs text-slate-400">Pledge action habits to immediately reduce your carbon output</p>
+                        </div>
+                        <div class="bg-slate-900 px-4 py-2 rounded-xl border border-slate-700 text-xs flex items-center space-x-2">
+                            <span class="text-slate-400">Est. Annual Reduction:</span>
+                            <span class="font-bold text-emerald-400 text-sm" x-text="completedSavings + ' kg CO₂e'"></span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="(challenge, index) in challenges" :key="index">
+                            <div class="bg-slate-900/60 p-4 rounded-xl border transition-all duration-200 flex items-start space-x-3"
+                                 :class="challenge.completed ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-700/60'">
+                                <input type="checkbox" x-model="challenge.completed" @change="saveChallenges()" class="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-slate-800 border-slate-600">
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-start">
+                                        <h4 class="font-semibold text-sm" :class="challenge.completed ? 'text-emerald-300 line-through' : 'text-slate-200'" x-text="challenge.title"></h4>
+                                        <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono" x-text="'-' + challenge.impact + ' kg/yr'"></span>
+                                    </div>
+                                    <p class="text-xs text-slate-400 mt-1" x-text="challenge.desc"></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: SMART ACTIONABLE TIPS -->
+            <div x-show="activeTab === 'tips'" class="space-y-6" x-cloak>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6">
+                    <h3 class="text-lg font-bold text-white mb-1">Tailored Action Recommendations</h3>
+                    <p class="text-xs text-slate-400 mb-6">Personalized tips dynamically based on your footprint breakdown</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <template x-for="(tip, idx) in activeTips" :key="idx">
+                            <div class="bg-slate-900/60 border border-slate-700/60 p-5 rounded-xl space-y-3 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
+                                <div class="flex items-center space-x-3">
+                                    <div class="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                                        <i :data-lucide="tip.icon" class="w-5 h-5"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider" x-text="tip.category"></span>
+                                </div>
+                                <h4 class="font-semibold text-slate-100 text-sm" x-text="tip.title"></h4>
+                                <p class="text-xs text-slate-400 leading-relaxed" x-text="tip.description"></p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Import/Export Modal -->
+        <div x-show="openExportModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" x-cloak>
+            <div @click.away="openExportModal = false" class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <h3 class="font-bold text-slate-100">Export & Import Data</h3>
+                    <button @click="openExportModal = false" class="text-slate-400 hover:text-white">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <p class="text-xs text-slate-400">Save your current data and logs as a JSON file or restore from a backup.</p>
+
+                <div class="space-y-3 pt-2">
+                    <button @click="exportJSON()" class="w-full flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl transition-colors text-sm">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Download Backup JSON</span>
+                    </button>
+
+                    <div class="relative">
+                        <input type="file" @change="importJSON($event)" id="importFile" class="hidden" accept=".json">
+                        <label for="importFile" class="w-full flex items-center justify-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium py-2.5 rounded-xl transition-colors text-sm cursor-pointer border border-slate-600">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            <span>Import JSON File</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reset Confirmation Modal -->
+        <div x-show="openResetModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" x-cloak>
+            <div @click.away="openResetModal = false" class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <h3 class="font-bold text-slate-100">Reset All Data</h3>
+                    <button @click="openResetModal = false" class="text-slate-400 hover:text-white">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <p class="text-xs text-slate-300">Are you sure you want to reset all stored carbon footprint data, logs, and challenges? This action cannot be undone.</p>
+
+                <div class="flex space-x-3 pt-2">
+                    <button @click="openResetModal = false" class="w-1/2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium py-2.5 rounded-xl transition-colors text-sm">
+                        Cancel
+                    </button>
+                    <button @click="resetData()" class="w-1/2 bg-rose-600 hover:bg-rose-500 text-white font-medium py-2.5 rounded-xl transition-colors text-sm">
+                        Confirm Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div x-show="errorMessage" class="fixed bottom-5 right-5 z-50 bg-rose-900/90 border border-rose-500 text-rose-100 px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3" x-cloak>
+            <i data-lucide="alert-circle" class="w-5 h-5 text-rose-400"></i>
+            <span class="text-xs font-medium" x-text="errorMessage"></span>
+            <button @click="errorMessage = ''" class="text-rose-300 hover:text-white ml-2">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function app() {
+            return {
+                activeTab: 'tracker',
+                unit: 'kg', // 'kg' or 'ton'
+                period: 'monthly', // 'monthly' or 'annual'
+                openExportModal: false,
+                openResetModal: false,
+                errorMessage: '',
+
+                // User Inputs
+                inputs: {
+                    carKm: 600,
+                    evKm: 150,
+                    transitKm: 100,
+                    flightHours: 2,
+                    electricityKwh: 350,
+                    naturalGasm3: 40,
+                    greenTariff: false,
+                    dietType: 'mediumMeat', // heavyMeat, mediumMeat, lowMeat, vegetarian, vegan
+                    foodWaste: 15,
+                    goodsSpend: 300,
+                    recycling: 'average' // none, average, high
+                },
+
+                // Calculated Results in KG CO2/Month
+                results: {
+                    transport: 0,
+                    energy: 0,
+                    food: 0,
+                    goods: 0
+                },
+
+                // Historical Snapshot Logs
+                logs: [],
+
+                // Active Eco Challenges
+                challenges: [
+                    { title: "Meatless Mondays", desc: "Swap meat for plant-based meals 1 day per week", impact: 180, completed: false },
+                    { title: "Switch to LED Lighting", desc: "Replace all incandescent bulbs with LEDs", impact: 120, completed: false },
+                    { title: "Commute via Transit or Bike", desc: "Use public transit or bike twice a week", impact: 450, completed: false },
+                    { title: "Cold Water Laundry Wash", desc: "Wash clothes in cold water to save heating energy", impact: 90, completed: false },
+                    { title: "Unplug Idle Electronics", desc: "Reduce phantom load power draw", impact: 60, completed: false },
+                    { title: "Air Dry Clothes", desc: "Skip the dryer during summer months", impact: 200, completed: false }
+                ],
+
+                // Dynamic Smart Tips Database
+                allTips: [
+                    { category: 'Transport', icon: 'car', title: 'Optimize Tire Inflation', description: 'Properly inflated tires improve fuel efficiency by up to 3%, saving fuel and reducing emissions.' },
+                    { category: 'Energy', icon: 'zap', title: 'Lower Thermostat 1-2°C', description: 'Reducing your home heating temperature by just 1 degree saves up to 10% on your energy bill.' },
+                    { category: 'Diet', icon: 'utensils', title: 'Reduce Food Waste', description: 'Meal planning prevents spoiled food, which accounts for ~8% of global greenhouse emissions.' },
+                    { category: 'Shopping', icon: 'shopping-bag', title: 'Buy High Quality / Secondhand', description: 'Extending clothing life by 9 months reduces its carbon footprint by 20-30%.' },
+                    { category: 'Energy', icon: 'sun', title: 'Solar Tariff Switch', description: 'Switching to a 100% renewable electricity supplier instantly zeroes your power grid emissions.' }
+                ],
+
+                donutChart: null,
+                lineChart: null,
+
+                initApp() {
+                    // Load local storage
+                    const savedInputs = localStorage.getItem('ecoPulse_inputs');
+                    if (savedInputs) this.inputs = JSON.parse(savedInputs);
+
+                    const savedLogs = localStorage.getItem('ecoPulse_logs');
+                    if (savedLogs) this.logs = JSON.parse(savedLogs);
+
+                    const savedChallenges = localStorage.getItem('ecoPulse_challenges');
+                    if (savedChallenges) this.challenges = JSON.parse(savedChallenges);
+
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                        this.recalculate();
+                        this.initCharts();
+                    });
+                },
+
+                // Emission Calculations Logic
+                recalculate() {
+                    // 1. Transportation Calculations (kg CO2)
+                    let carEF = 0.192; // kg CO2 / km
+                    let evEF = 0.053;  // kg CO2 / km
+                    let transitEF = 0.089; // kg CO2 / km
+                    let flightEF = 90; // kg CO2 per flight hour
+
+                    let transportMonthly = (this.inputs.carKm * carEF) +
+                                           (this.inputs.evKm * evEF) +
+                                           (this.inputs.transitKm * transitEF) +
+                                           (this.inputs.flightHours * flightEF / 12);
+
+                    // 2. Energy Calculations
+                    let elecF = this.inputs.greenTariff ? 0.02 : 0.385; // kg CO2 / kWh
+                    let gasEF = 2.0; // kg CO2 / m3
+
+                    let energyMonthly = (this.inputs.electricityKwh * elecF) +
+                                        (this.inputs.naturalGasm3 * gasEF);
+
+                    // 3. Diet Calculations
+                    let dietFactors = {
+                        heavyMeat: 260,
+                        mediumMeat: 190,
+                        lowMeat: 140,
+                        vegetarian: 110,
+                        vegan: 80
+                    };
+
+                    let baseDietMonthly = dietFactors[this.inputs.dietType] || 190;
+                    let foodWasteFactor = 1 + (this.inputs.foodWaste / 100) * 0.3;
+                    let foodMonthly = baseDietMonthly * foodWasteFactor;
+
+                    // 4. Shopping/Goods Calculations
+                    let goodsMonthly = (this.inputs.goodsSpend * 0.45);
+                    if (this.inputs.recycling === 'high') goodsMonthly *= 0.8;
+                    if (this.inputs.recycling === 'none') goodsMonthly *= 1.2;
+
+                    // Save monthly values
+                    this.results.transport = transportMonthly;
+                    this.results.energy = energyMonthly;
+                    this.results.food = foodMonthly;
+                    this.results.goods = goodsMonthly;
+
+                    // Save to local storage
+                    localStorage.setItem('ecoPulse_inputs', JSON.stringify(this.inputs));
+
+                    this.updateCharts();
+                },
+
+                // Helper getters for values based on selected unit & period
+                get multiplier() {
+                    let m = 1;
+                    if (this.period === 'annual') m *= 12;
+                    if (this.unit === 'ton') m /= 1000;
+                    return m;
+                },
+
+                getCategoryTotal(cat) {
+                    let val = (this.results[cat] || 0) * this.multiplier;
+                    return val.toFixed(1);
+                },
+
+                get totalCO2Val() {
+                    let totalMonthly = this.results.transport + this.results.energy + this.results.food + this.results.goods;
+                    return totalMonthly * this.multiplier;
+                },
+
+                get formattedTotalCO2() {
+                    return this.totalCO2Val.toFixed(1);
+                },
+
+                get targetThreshold() {
+                    // Paris 1.5 Target: 2.0 Tons / year per person = ~166.6 kg / month
+                    let baseTargetMonthly = 166.6;
+                    return baseTargetMonthly * this.multiplier;
+                },
+
+                get formattedTarget() {
+                    return this.targetThreshold.toFixed(1);
+                },
+
+                get annualTotalNum() {
+                    let annualKg = (this.results.transport + this.results.energy + this.results.food + this.results.goods) * 12;
+                    return (annualKg / 1000).toFixed(1);
+                },
+
+                get annualTotalFormatted() {
+                    return this.annualTotalNum;
+                },
+
+                // Trees needed to absorb annual CO2 (1 tree absorbs approx 22 kg CO2 / yr)
+                get treesNeeded() {
+                    let annualKg = (this.results.transport + this.results.energy + this.results.food + this.results.goods) * 12;
+                    return Math.round(annualKg / 22);
+                },
+
+                // NYC to London flight (~1000 kg CO2)
+                get flightEquiv() {
+                    let annualKg = (this.results.transport + this.results.energy + this.results.food + this.results.goods) * 12;
+                    return (annualKg / 1000).toFixed(1);
+                },
+
+                // Average gas vehicle distance (0.192 kg CO2 / km)
+                get kmDrivenEquiv() {
+                    let annualKg = (this.results.transport + this.results.energy + this.results.food + this.results.goods) * 12;
+                    return Math.round(annualKg / 0.192).toLocaleString();
+                },
+
+                get completedSavings() {
+                    return this.challenges
+                        .filter(c => c.completed)
+                        .reduce((sum, c) => sum + c.impact, 0);
+                },
+
+                get completedChallengesCount() {
+                    return this.challenges.filter(c => c.completed).length;
+                },
+
+                get activeTips() {
+                    return this.allTips;
+                },
+
+                getFootprintColorClass() {
+                    let ratio = this.totalCO2Val / this.targetThreshold;
+                    if (ratio <= 1.0) return 'text-emerald-500';
+                    if (ratio <= 1.8) return 'text-amber-500';
+                    return 'text-rose-500';
+                },
+
+                initCharts() {
+                    // 1. Donut Category Breakdown Chart
+                    const ctxDonut = document.getElementById('categoryDonutChart')?.getContext('2d');
+                    if (ctxDonut) {
+                        this.donutChart = new Chart(ctxDonut, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['Transport', 'Energy', 'Diet', 'Goods'],
+                                datasets: [{
+                                    data: [
+                                        this.results.transport * this.multiplier,
+                                        this.results.energy * this.multiplier,
+                                        this.results.food * this.multiplier,
+                                        this.results.goods * this.multiplier
+                                    ],
+                                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#a855f7'],
+                                    borderWidth: 0
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } }
+                                },
+                                cutout: '70%'
+                            }
+                        });
+                    }
+
+                    // 2. Historical Trend Line Chart
+                    const ctxLine = document.getElementById('historicalTrendChart')?.getContext('2d');
+                    if (ctxLine) {
+                        this.lineChart = new Chart(ctxLine, {
+                            type: 'line',
+                            data: {
+                                labels: this.logs.map(l => l.date),
+                                datasets: [{
+                                    label: 'Footprint Trend (' + this.unit + ')',
+                                    data: this.logs.map(l => l.total),
+                                    borderColor: '#10b981',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    fill: true,
+                                    tension: 0.3
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: { ticks: { color: '#64748b' }, grid: { color: '#334155' } },
+                                    y: { ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                                },
+                                plugins: {
+                                    legend: { labels: { color: '#94a3b8' } }
+                                }
+                            }
+                        });
+                    }
+                },
+
+                updateCharts() {
+                    if (this.donutChart) {
+                        this.donutChart.data.datasets[0].data = [
+                            this.results.transport * this.multiplier,
+                            this.results.energy * this.multiplier,
+                            this.results.food * this.multiplier,
+                            this.results.goods * this.multiplier
+                        ];
+                        this.donutChart.update();
+                    }
+
+                    if (this.lineChart) {
+                        this.lineChart.data.labels = this.logs.map(l => l.date);
+                        this.lineChart.data.datasets[0].data = this.logs.map(l => l.total);
+                        this.lineChart.data.datasets[0].label = 'Footprint Trend (' + this.unit + ')';
+                        this.lineChart.update();
+                    }
+                },
+
+                // Snapshot Log Management
+                saveLogEntry() {
+                    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    const newLog = {
+                        date: today,
+                        transport: (this.results.transport * this.multiplier).toFixed(1),
+                        energy: (this.results.energy * this.multiplier).toFixed(1),
+                        food: (this.results.food * this.multiplier).toFixed(1),
+                        goods: (this.results.goods * this.multiplier).toFixed(1),
+                        total: this.formattedTotalCO2
+                    };
+
+                    this.logs.unshift(newLog);
+                    localStorage.setItem('ecoPulse_logs', JSON.stringify(this.logs));
+                    this.updateCharts();
+                },
+
+                deleteLog(index) {
+                    this.logs.splice(index, 1);
+                    localStorage.setItem('ecoPulse_logs', JSON.stringify(this.logs));
+                    this.updateCharts();
+                },
+
+                saveChallenges() {
+                    localStorage.setItem('ecoPulse_challenges', JSON.stringify(this.challenges));
+                },
+
+                resetData() {
+                    localStorage.clear();
+                    location.reload();
+                },
+
+                // Data Import / Export
+                exportJSON() {
+                    const data = {
+                        inputs: this.inputs,
+                        logs: this.logs,
+                        challenges: this.challenges
+                    };
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `EcoPulse_Backup_${new Date().toISOString().slice(0,10)}.json`;
+                    a.click();
+                },
+
+                importJSON(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            if (data.inputs) this.inputs = data.inputs;
+                            if (data.logs) this.logs = data.logs;
+                            if (data.challenges) this.challenges = data.challenges;
+
+                            localStorage.setItem('ecoPulse_inputs', JSON.stringify(this.inputs));
+                            localStorage.setItem('ecoPulse_logs', JSON.stringify(this.logs));
+                            localStorage.setItem('ecoPulse_challenges', JSON.stringify(this.challenges));
+
+                            this.recalculate();
+                            this.openExportModal = false;
+                        } catch (err) {
+                            this.errorMessage = "Invalid backup file format. Please upload a valid JSON file.";
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
